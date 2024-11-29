@@ -42,6 +42,9 @@ type testLogWriter struct {
 }
 
 func (w *testLogWriter) Write(p []byte) (n int, err error) {
+	if len(p) != 0 && p[len(p)-1] == '\n' {
+		p = p[:len(p)-1]
+	}
 	w.t.Log(string(p))
 	return len(p), nil
 }
