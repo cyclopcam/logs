@@ -12,15 +12,15 @@ messages in a buffer, then you can do this:
 
 // LogStore is a log writer that stores log messages in a slice of strings before sending them out
 type LogStore struct {
-	Stored []string   // Stored logs
-	Output *LogWriter // Original writer
+	Stored []string       // Stored logs
+	Output logs.LogWriter // Original writer
 }
 
-func (s *LogStore) Flags() LogWriterFlags {
+func (s *LogStore) Flags() logs.LogWriterFlags {
 	return s.Output.Flags()
 }
 
-func (s *LogStore) Write(level Level, message string) {
+func (s *LogStore) Write(level logs.Level, message string) {
 	s.Stored = append(s.Stored, message)
 	s.Output.Write(level, message)
 }
