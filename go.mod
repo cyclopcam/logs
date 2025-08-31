@@ -1,4 +1,4 @@
-module github.com/cyclopcam/logs
+module github.com/cyclopcam/logs/v2
 
 go 1.22.0
 

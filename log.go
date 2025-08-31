@@ -11,6 +11,7 @@ import (
 	"cloud.google.com/go/logging"
 )
 
+// Log level
 type Level int
 
 const (
@@ -21,36 +22,98 @@ const (
 	LevelCritical              // wake somebody up
 )
 
-type Log interface {
-	Close() // Give logger a chance to flush
-	Debugf(format string, a ...interface{})
-	Infof(format string, a ...interface{})
-	Warnf(format string, a ...interface{})
-	Errorf(format string, a ...interface{})
-	Criticalf(format string, a ...interface{})
+// Log writer flags
+type LogWriterFlags int
+
+const (
+	LogWriterFlagNeedNewline LogWriterFlags = 1 << iota // If you should end the message with a \n
+	LogWriterFlagWantDate                               // If you should embed the date at the start of the message
+	LogWriterFlagWantLevel                              // If you should embed the level at the start of the message
+	LogWriterFlagWantColors                             // If you should embed color escape codes
+)
+
+// LogWriter is the low level object that writes the logs
+type LogWriter interface {
+	Flags() LogWriterFlags
+	Write(level Level, message string)
+	Close()
 }
 
-type Logger struct {
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Write logs to Google Cloud
+type LogWriterGCP struct {
+	Logger *logging.Logger
+	Client *logging.Client
+}
+
+func (w *LogWriterGCP) Flags() LogWriterFlags {
+	return 0
+}
+
+func (w *LogWriterGCP) Write(level Level, message string) {
+	w.Logger.Log(logging.Entry{
+		Severity: levelToGCP(level),
+		Payload:  message,
+	})
+}
+
+func (w *LogWriterGCP) Close() {
+	w.Logger.Flush()
+	w.Client.Close()
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Write logs to a standard file such as stdout
+type LogWriterStandard struct {
 	Output       io.Writer
-	GCP          *logging.Logger
-	Client       *logging.Client
 	EnableColors bool
 }
 
-type testLogWriter struct {
-	t *testing.T
-}
-
-func (w *testLogWriter) Write(p []byte) (n int, err error) {
-	if len(p) != 0 && p[len(p)-1] == '\n' {
-		p = p[:len(p)-1]
+func (w *LogWriterStandard) Flags() LogWriterFlags {
+	f := LogWriterFlagWantLevel | LogWriterFlagWantDate | LogWriterFlagNeedNewline
+	if w.EnableColors {
+		f |= LogWriterFlagWantColors
 	}
-	w.t.Log(string(p))
-	return len(p), nil
+	return f
 }
 
-func NewLog() (Log, error) {
-	l := &Logger{}
+func (w *LogWriterStandard) Write(level Level, message string) {
+	w.Output.Write([]byte(message))
+}
+
+func (w *LogWriterStandard) Close() {
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Write logs during unit tests
+type LogWriterTest struct {
+	T *testing.T
+}
+
+func (w *LogWriterTest) Flags() LogWriterFlags {
+	return LogWriterFlagWantLevel | LogWriterFlagWantDate
+}
+
+func (w *LogWriterTest) Write(level Level, message string) {
+	w.T.Log(message)
+}
+
+func (w *LogWriterTest) Close() {
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// The log object that you use to write logs
+type Log struct {
+	Output LogWriter
+}
+
+// Create a new logger
+func NewLog() (*Log, error) {
+	l := &Log{}
 	gcpProjectID := os.Getenv("GCP_PROJECT_ID")
 	gcpLogname := os.Getenv("GCP_LOGNAME")
 	if gcpProjectID != "" && gcpLogname != "" {
@@ -59,24 +122,26 @@ func NewLog() (Log, error) {
 		if err != nil {
 			return nil, fmt.Errorf("Failed to create GCP logging client: %v", err)
 		}
-		logger := client.Logger(gcpLogname)
-		l.Client = client
-		l.GCP = logger
-		l.EnableColors = false
+		l.Output = &LogWriterGCP{
+			Client: client,
+			Logger: client.Logger(gcpLogname),
+		}
 	} else {
-		l.Output = os.Stdout
-		l.EnableColors = true
+		l.Output = &LogWriterStandard{
+			Output:       os.Stdout,
+			EnableColors: true,
+		}
 		l.Infof("Logging to stdout")
 	}
 	return l, nil
 }
 
-func NewTestingLog(t *testing.T) Log {
-	output := &testLogWriter{
-		t: t,
-	}
-	return &Logger{
-		Output: output,
+// Create new log for use during unit tests
+func NewTestingLog(t *testing.T) *Log {
+	return &Log{
+		Output: &LogWriterTest{
+			T: t,
+		},
 	}
 }
 
@@ -112,53 +177,55 @@ func levelToName(level Level) string {
 	panic("Unknown log level")
 }
 
-func (l *Logger) write(level Level, format string, a ...interface{}) {
-	if l.GCP != nil {
-		l.GCP.Log(logging.Entry{
-			Severity: levelToGCP(level),
-			Payload:  fmt.Sprintf(format, a...),
-		})
-	} else {
+func (l *Log) write(level Level, format string, a ...any) {
+	flags := l.Output.Flags()
+	prefix := ""
+	suffix := ""
+	if flags&LogWriterFlagWantDate != 0 {
 		tm := time.Now().UTC().Format("2006-01-02 15:04:05.999999")
 		for len(tm) < 26 {
 			tm += "0"
 		}
-		prefix := fmt.Sprintf("%v %v ", tm, levelToName(level))
-		if l.EnableColors && level > LevelInfo {
-			color := "\033[0;33m" // yellow
-			if level >= LevelError {
-				color = "\033[0;31m" // red
-			}
-			fmt.Fprintf(l.Output, color+prefix+format+"\033[0m\n", a...)
-		} else {
-			fmt.Fprintf(l.Output, prefix+format+"\n", a...)
+		prefix += tm + " "
+	}
+	if flags&LogWriterFlagWantLevel != 0 {
+		prefix += levelToName(level) + " "
+	}
+	if flags&LogWriterFlagWantColors != 0 && level > LevelInfo {
+		prefix = "\033[0;33m" + prefix // yellow
+		if level >= LevelError {
+			prefix = "\033[0;31m" + prefix // red
 		}
+		suffix = "\033[0m"
+	}
+	if flags&LogWriterFlagNeedNewline != 0 {
+		suffix += "\n"
+	}
+	l.Output.Write(level, prefix+fmt.Sprintf(format, a...)+suffix)
+}
+
+func (l *Log) Close() {
+	if l.Output != nil {
+		l.Output.Close()
 	}
 }
 
-func (l *Logger) Close() {
-	if l.GCP != nil {
-		l.GCP.Flush()
-		l.Client.Close()
-	}
-}
-
-func (l *Logger) Debugf(format string, a ...interface{}) {
+func (l *Log) Debugf(format string, a ...any) {
 	l.write(LevelDebug, format, a...)
 }
 
-func (l *Logger) Infof(format string, a ...interface{}) {
+func (l *Log) Infof(format string, a ...any) {
 	l.write(LevelInfo, format, a...)
 }
 
-func (l *Logger) Warnf(format string, a ...interface{}) {
+func (l *Log) Warnf(format string, a ...any) {
 	l.write(LevelWarn, format, a...)
 }
 
-func (l *Logger) Errorf(format string, a ...interface{}) {
+func (l *Log) Errorf(format string, a ...any) {
 	l.write(LevelError, format, a...)
 }
 
-func (l *Logger) Criticalf(format string, a ...interface{}) {
+func (l *Log) Criticalf(format string, a ...any) {
 	l.write(LevelCritical, format, a...)
 }

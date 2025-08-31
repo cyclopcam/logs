@@ -23,22 +23,22 @@ func (l *PrefixLogger) Close() {
 	l.Log.Close()
 }
 
-func (l *PrefixLogger) Debugf(format string, a ...interface{}) {
+func (l *PrefixLogger) Debugf(format string, a ...any) {
 	l.Log.Debugf(l.Prefix+format, a...)
 }
 
-func (l *PrefixLogger) Infof(format string, a ...interface{}) {
+func (l *PrefixLogger) Infof(format string, a ...any) {
 	l.Log.Infof(l.Prefix+format, a...)
 }
 
-func (l *PrefixLogger) Warnf(format string, a ...interface{}) {
+func (l *PrefixLogger) Warnf(format string, a ...any) {
 	l.Log.Warnf(l.Prefix+format, a...)
 }
 
-func (l *PrefixLogger) Errorf(format string, a ...interface{}) {
+func (l *PrefixLogger) Errorf(format string, a ...any) {
 	l.Log.Errorf(l.Prefix+format, a...)
 }
 
-func (l *PrefixLogger) Criticalf(format string, a ...interface{}) {
+func (l *PrefixLogger) Criticalf(format string, a ...any) {
 	l.Log.Criticalf(l.Prefix+format, a...)
 }
