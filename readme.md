@@ -31,3 +31,21 @@ func (s *LogStore) Close() {
 }
 
 ```
+
+## Multi-module repo
+
+This is a multi-module git repo, meaning there are different go.mod files inside here.
+
+To tag a new release of the base package:
+
+`git tag v2.0.1`
+
+To tag a new release of the child (GCP) package:
+
+`git tag gcp/v2.0.5`
+
+The `gcp` prefix tells Go that this tag is only for the `gcp` module within the repo.
+
+To work inside this repo, you might want to do this:
+
+`go work init ./ ./gcp`

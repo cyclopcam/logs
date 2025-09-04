@@ -1,14 +1,11 @@
 package logs
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
 	"testing"
 	"time"
-
-	"cloud.google.com/go/logging"
 )
 
 // Log level
@@ -37,30 +34,6 @@ type LogWriter interface {
 	Flags() LogWriterFlags
 	Write(level Level, message string)
 	Close()
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////
-
-// Write logs to Google Cloud
-type LogWriterGCP struct {
-	Logger *logging.Logger
-	Client *logging.Client
-}
-
-func (w *LogWriterGCP) Flags() LogWriterFlags {
-	return 0
-}
-
-func (w *LogWriterGCP) Write(level Level, message string) {
-	w.Logger.Log(logging.Entry{
-		Severity: levelToGCP(level),
-		Payload:  message,
-	})
-}
-
-func (w *LogWriterGCP) Close() {
-	w.Logger.Flush()
-	w.Client.Close()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -106,62 +79,43 @@ func (w *LogWriterTest) Close() {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// We keep this interface, but in practice we only use one implementation, which is Logger.
+type Log interface {
+	Debugf(format string, a ...any)
+	Infof(format string, a ...any)
+	Warnf(format string, a ...any)
+	Errorf(format string, a ...any)
+	Criticalf(format string, a ...any)
+	Close()
+	LogWriter() LogWriter // Get the underlying LogWriter
+}
+
 // The log object that you use to write logs
-type Log struct {
+type Logger struct {
 	Output LogWriter
 }
 
 // Create a new logger
-func NewLog() (*Log, error) {
-	l := &Log{}
-	gcpProjectID := os.Getenv("GCP_PROJECT_ID")
-	gcpLogname := os.Getenv("GCP_LOGNAME")
-	if gcpProjectID != "" && gcpLogname != "" {
-		fmt.Printf("Logging to GCP %v / %v (you won't see further logs on stdout)\n", gcpProjectID, gcpLogname)
-		client, err := logging.NewClient(context.Background(), gcpProjectID)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to create GCP logging client: %v", err)
-		}
-		l.Output = &LogWriterGCP{
-			Client: client,
-			Logger: client.Logger(gcpLogname),
-		}
-	} else {
-		l.Output = &LogWriterStandard{
-			Output:       os.Stdout,
-			EnableColors: true,
-		}
-		l.Infof("Logging to stdout")
+func NewLog() (Log, error) {
+	l := &Logger{}
+	l.Output = &LogWriterStandard{
+		Output:       os.Stdout,
+		EnableColors: true,
 	}
+	l.Infof("Logging to stdout")
 	return l, nil
 }
 
 // Create new log for use during unit tests
-func NewTestingLog(t *testing.T) *Log {
-	return &Log{
+func NewTestingLog(t *testing.T) Log {
+	return &Logger{
 		Output: &LogWriterTest{
 			T: t,
 		},
 	}
 }
 
-func levelToGCP(level Level) logging.Severity {
-	switch level {
-	case LevelDebug:
-		return logging.Debug
-	case LevelInfo:
-		return logging.Info
-	case LevelWarn:
-		return logging.Warning
-	case LevelError:
-		return logging.Error
-	case LevelCritical:
-		return logging.Critical
-	}
-	panic("Unknown log level")
-}
-
-func levelToName(level Level) string {
+func LevelToName(level Level) string {
 	switch level {
 	case LevelDebug:
 		return "Debug"
@@ -177,7 +131,7 @@ func levelToName(level Level) string {
 	panic("Unknown log level")
 }
 
-func (l *Log) write(level Level, format string, a ...any) {
+func (l *Logger) write(level Level, format string, a ...any) {
 	flags := l.Output.Flags()
 	prefix := ""
 	suffix := ""
@@ -189,7 +143,7 @@ func (l *Log) write(level Level, format string, a ...any) {
 		prefix += tm + " "
 	}
 	if flags&LogWriterFlagWantLevel != 0 {
-		prefix += levelToName(level) + " "
+		prefix += LevelToName(level) + " "
 	}
 	if flags&LogWriterFlagWantColors != 0 && level > LevelInfo {
 		prefix = "\033[0;33m" + prefix // yellow
@@ -204,28 +158,32 @@ func (l *Log) write(level Level, format string, a ...any) {
 	l.Output.Write(level, prefix+fmt.Sprintf(format, a...)+suffix)
 }
 
-func (l *Log) Close() {
+func (l *Logger) Close() {
 	if l.Output != nil {
 		l.Output.Close()
 	}
 }
 
-func (l *Log) Debugf(format string, a ...any) {
+func (l *Logger) LogWriter() LogWriter {
+	return l.Output
+}
+
+func (l *Logger) Debugf(format string, a ...any) {
 	l.write(LevelDebug, format, a...)
 }
 
-func (l *Log) Infof(format string, a ...any) {
+func (l *Logger) Infof(format string, a ...any) {
 	l.write(LevelInfo, format, a...)
 }
 
-func (l *Log) Warnf(format string, a ...any) {
+func (l *Logger) Warnf(format string, a ...any) {
 	l.write(LevelWarn, format, a...)
 }
 
-func (l *Log) Errorf(format string, a ...any) {
+func (l *Logger) Errorf(format string, a ...any) {
 	l.write(LevelError, format, a...)
 }
 
-func (l *Log) Criticalf(format string, a ...any) {
+func (l *Logger) Criticalf(format string, a ...any) {
 	l.write(LevelCritical, format, a...)
 }
