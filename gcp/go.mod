@@ -1,4 +1,4 @@
-module github.com/cyclopcam/logs/gcp
+module github.com/cyclopcam/logs/gcp/v3
 
 go 1.24.6
 
