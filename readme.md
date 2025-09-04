@@ -8,6 +8,32 @@ You can write your own custom log output object by implementing the LogWriter in
 and replacing the Output object on your Log. For example, if you want to store log
 messages in a buffer, then you can do this:
 
+### Base:
+
+To use:
+`go get github.com/cyclopcam/logs/v3@v3.0.2`
+
+```go
+import "github.com/cyclopcam/logs/v3"
+
+func foo() {
+	logs.NewLog()
+}
+```
+
+### For GCP:
+
+To use inside a GCP project, also do this:
+`go get github.com/cyclopcam/logs/gcp/v3@v3.0.2`
+
+```go
+import logsgcp "github.com/cyclopcam/logs/gcp/v3"
+
+func foo() {
+	logsgcp.NewLog()
+}
+```
+
 ```go
 
 // LogStore is a log writer that stores log messages in a slice of strings before sending them out
