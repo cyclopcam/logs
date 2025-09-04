@@ -4,7 +4,7 @@ go 1.24.6
 
 require (
 	cloud.google.com/go/logging v1.13.0
-	github.com/cyclopcam/logs/v3 v3.0.0
+	github.com/cyclopcam/logs/v3 v3.0.2
 )
 
 require (
