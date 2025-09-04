@@ -1,10 +1,10 @@
-module github.com/cyclopcam/logs/gcp/v3
+module github.com/cyclopcam/logs/gcp/v2
 
 go 1.24.6
 
 require (
 	cloud.google.com/go/logging v1.13.0
-	github.com/cyclopcam/logs/v3 v3.0.0
+	github.com/cyclopcam/logs/v2 v3.0.0
 )
 
 require (

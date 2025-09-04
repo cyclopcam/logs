@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"cloud.google.com/go/logging"
-	"github.com/cyclopcam/logs/v3"
+	"github.com/cyclopcam/logs/v2"
 )
 
 // Write logs to Google Cloud
