@@ -1,33 +1,19 @@
 package logs
 
-// PrefixLogger writes to the underlying log, but all messages are prefixed with a string of your choice
-type PrefixLogger struct {
-	Base   LogWriter
-	Prefix string
-}
-
-// Create a new PrefixLogWriter
+// Return a new logger that adds 'prefix ' (i.e. 'prefix' with a space after it) onto every log message
 func NewPrefixLogger(log Log, prefix string) Log {
 	return NewPrefixLoggerNoSpace(log, prefix+" ")
 }
 
-// Create a new PrefixLogWriter, but don't add a space onto 'prefix'
+// Return a new logger that adds 'prefix' onto every log message
 func NewPrefixLoggerNoSpace(log Log, prefix string) Log {
-	writer := &PrefixLogger{
-		Base:   log.LogWriter(),
-		Prefix: prefix,
+	logger, ok := log.(*Logger)
+	if !ok {
+		panic("Underlying log is not a Logger")
 	}
-	return &Logger{
-		Output: writer,
+	newLogger := &Logger{
+		Output: logger.Output,
+		Prefix: logger.Prefix + prefix,
 	}
-}
-
-func (p *PrefixLogger) Flags() LogWriterFlags {
-	return p.Base.Flags()
-}
-func (p *PrefixLogger) Write(level Level, message string) {
-	p.Base.Write(level, p.Prefix+message)
-}
-func (p *PrefixLogger) Close() {
-	p.Base.Close()
+	return newLogger
 }

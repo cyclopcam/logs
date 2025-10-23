@@ -42,10 +42,18 @@ type LogWriter interface {
 type LogWriterStandard struct {
 	Output       io.Writer
 	EnableColors bool
+	EnableDate   bool
+	EnableLevel  bool
 }
 
 func (w *LogWriterStandard) Flags() LogWriterFlags {
-	f := LogWriterFlagWantLevel | LogWriterFlagWantDate | LogWriterFlagNeedNewline
+	f := LogWriterFlagNeedNewline
+	if w.EnableLevel {
+		f |= LogWriterFlagWantLevel
+	}
+	if w.EnableDate {
+		f |= LogWriterFlagWantDate
+	}
 	if w.EnableColors {
 		f |= LogWriterFlagWantColors
 	}
@@ -80,6 +88,9 @@ func (w *LogWriterTest) Close() {
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // We keep this interface, but in practice we only use one implementation, which is Logger.
+// It seems appropriate to use an interface, but I admit it's a bit janky, since we only
+// really support a single implementation - eg see NewPrefixLogger(), which requires
+// the underlying type to be Logger.
 type Log interface {
 	Debugf(format string, a ...any)
 	Infof(format string, a ...any)
@@ -93,6 +104,7 @@ type Log interface {
 // The log object that you use to write logs
 type Logger struct {
 	Output LogWriter
+	Prefix string // Prepended to every message. Added after Date & Level, immediately before the formatted message.
 }
 
 // Create a new logger
@@ -101,6 +113,8 @@ func NewLog() (Log, error) {
 	l.Output = &LogWriterStandard{
 		Output:       os.Stdout,
 		EnableColors: true,
+		EnableDate:   true,
+		EnableLevel:  true,
 	}
 	l.Infof("Logging to stdout")
 	return l, nil
@@ -135,6 +149,13 @@ func (l *Logger) write(level Level, format string, a ...any) {
 	flags := l.Output.Flags()
 	prefix := ""
 	suffix := ""
+	if flags&LogWriterFlagWantColors != 0 && level > LevelInfo {
+		prefix = "\033[0;33m" // yellow
+		if level >= LevelError {
+			prefix = "\033[0;31m" // red
+		}
+		suffix = "\033[0m"
+	}
 	if flags&LogWriterFlagWantDate != 0 {
 		tm := time.Now().UTC().Format("2006-01-02 15:04:05.999999")
 		for len(tm) < 26 {
@@ -145,13 +166,7 @@ func (l *Logger) write(level Level, format string, a ...any) {
 	if flags&LogWriterFlagWantLevel != 0 {
 		prefix += LevelToName(level) + " "
 	}
-	if flags&LogWriterFlagWantColors != 0 && level > LevelInfo {
-		prefix = "\033[0;33m" + prefix // yellow
-		if level >= LevelError {
-			prefix = "\033[0;31m" + prefix // red
-		}
-		suffix = "\033[0m"
-	}
+	prefix += l.Prefix
 	if flags&LogWriterFlagNeedNewline != 0 {
 		suffix += "\n"
 	}
