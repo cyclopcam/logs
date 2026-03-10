@@ -1,6 +1,6 @@
 module github.com/cyclopcam/logs/gcp/v3
 
-go 1.24.6
+go 1.26.1
 
 require (
 	cloud.google.com/go/logging v1.13.0
