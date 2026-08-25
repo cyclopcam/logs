@@ -1,5 +1,18 @@
 package logs
 
+// Adds a prefix to log messages
+type LogWriterPrefix struct {
+	W      LogWriter
+	Prefix string
+}
+
+func (w *LogWriterPrefix) Write(level Level, message string) {
+	w.W.Write(level, w.Prefix+message)
+}
+
+func (w *LogWriterPrefix) Close() {
+}
+
 // Return a new logger that adds 'prefix ' (i.e. 'prefix' with a space after it) onto every log message
 func NewPrefixLogger(log Log, prefix string) Log {
 	return NewPrefixLoggerNoSpace(log, prefix+" ")
@@ -7,13 +20,8 @@ func NewPrefixLogger(log Log, prefix string) Log {
 
 // Return a new logger that adds 'prefix' onto every log message
 func NewPrefixLoggerNoSpace(log Log, prefix string) Log {
-	logger, ok := log.(*Logger)
-	if !ok {
-		panic("Underlying log is not a Logger")
-	}
-	newLogger := &Logger{
-		Output: logger.Output,
-		Prefix: logger.Prefix + prefix,
-	}
-	return newLogger
+	return NewLogFromWriter(&LogWriterPrefix{
+		W:      log.LogWriter(),
+		Prefix: prefix,
+	})
 }

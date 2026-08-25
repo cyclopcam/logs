@@ -33,12 +33,8 @@ func NewLog() (logs.Log, error) {
 		}
 		return l, nil
 	} else {
-		return logs.NewLog()
+		return logs.NewLog(), nil
 	}
-}
-
-func (w *LogWriterGCP) Flags() logs.LogWriterFlags {
-	return 0
 }
 
 func (w *LogWriterGCP) Write(level logs.Level, message string) {

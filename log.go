@@ -31,7 +31,6 @@ const (
 
 // LogWriter is the low level object that writes the logs
 type LogWriter interface {
-	Flags() LogWriterFlags
 	Write(level Level, message string)
 	Close()
 }
@@ -40,28 +39,12 @@ type LogWriter interface {
 
 // Write logs to a standard file such as stdout
 type LogWriterStandard struct {
-	Output       io.Writer
-	EnableColors bool
-	EnableDate   bool
-	EnableLevel  bool
-}
-
-func (w *LogWriterStandard) Flags() LogWriterFlags {
-	f := LogWriterFlagNeedNewline
-	if w.EnableLevel {
-		f |= LogWriterFlagWantLevel
-	}
-	if w.EnableDate {
-		f |= LogWriterFlagWantDate
-	}
-	if w.EnableColors {
-		f |= LogWriterFlagWantColors
-	}
-	return f
+	Output io.Writer
+	Flags  LogWriterFlags
 }
 
 func (w *LogWriterStandard) Write(level Level, message string) {
-	w.Output.Write([]byte(message))
+	w.Output.Write([]byte(formatMessage(level, w.Flags, message)))
 }
 
 func (w *LogWriterStandard) Close() {
@@ -74,12 +57,8 @@ type LogWriterTest struct {
 	T *testing.T
 }
 
-func (w *LogWriterTest) Flags() LogWriterFlags {
-	return LogWriterFlagWantLevel | LogWriterFlagWantDate
-}
-
 func (w *LogWriterTest) Write(level Level, message string) {
-	w.T.Log(message)
+	w.T.Log(formatMessage(level, LogWriterFlagWantDate|LogWriterFlagWantLevel, message))
 }
 
 func (w *LogWriterTest) Close() {
@@ -104,20 +83,24 @@ type Log interface {
 // The log object that you use to write logs
 type Logger struct {
 	Output LogWriter
-	Prefix string // Prepended to every message. Added after Date & Level, immediately before the formatted message.
 }
 
-// Create a new logger
-func NewLog() (Log, error) {
+// Create a new logger that writes to stdout
+func NewLog() Log {
 	l := &Logger{}
 	l.Output = &LogWriterStandard{
-		Output:       os.Stdout,
-		EnableColors: true,
-		EnableDate:   true,
-		EnableLevel:  true,
+		Output: os.Stdout,
+		Flags:  LogWriterFlagNeedNewline | LogWriterFlagWantColors | LogWriterFlagWantDate | LogWriterFlagWantLevel,
 	}
 	l.Infof("Logging to stdout")
-	return l, nil
+	return l
+}
+
+// Create a new Log object from a writer
+func NewLogFromWriter(w LogWriter) Log {
+	return &Logger{
+		Output: w,
+	}
 }
 
 // Create new log for use during unit tests
@@ -145,16 +128,26 @@ func LevelToName(level Level) string {
 	panic("Unknown log level")
 }
 
-func (l *Logger) write(level Level, format string, a ...any) {
-	flags := l.Output.Flags()
+const colorWarn = "\033[0;33m"  // yellow
+const colorError = "\033[0;31m" // red
+const colorReset = "\033[0m"
+
+func colorEscapeCodes(level Level) (prefix, suffix string) {
+	if level > LevelInfo {
+		prefix = colorWarn
+		if level >= LevelError {
+			prefix = colorError
+		}
+		suffix = colorReset
+	}
+	return
+}
+
+func formatMessage(level Level, flags LogWriterFlags, message string) string {
 	prefix := ""
 	suffix := ""
-	if flags&LogWriterFlagWantColors != 0 && level > LevelInfo {
-		prefix = "\033[0;33m" // yellow
-		if level >= LevelError {
-			prefix = "\033[0;31m" // red
-		}
-		suffix = "\033[0m"
+	if flags&LogWriterFlagWantColors != 0 {
+		prefix, suffix = colorEscapeCodes(level)
 	}
 	if flags&LogWriterFlagWantDate != 0 {
 		tm := time.Now().UTC().Format("2006-01-02 15:04:05.999999")
@@ -166,11 +159,14 @@ func (l *Logger) write(level Level, format string, a ...any) {
 	if flags&LogWriterFlagWantLevel != 0 {
 		prefix += LevelToName(level) + " "
 	}
-	prefix += l.Prefix
 	if flags&LogWriterFlagNeedNewline != 0 {
 		suffix += "\n"
 	}
-	l.Output.Write(level, prefix+fmt.Sprintf(format, a...)+suffix)
+	return prefix + message + suffix
+}
+
+func (l *Logger) write(level Level, format string, a ...any) {
+	l.Output.Write(level, fmt.Sprintf(format, a...))
 }
 
 func (l *Logger) Close() {
